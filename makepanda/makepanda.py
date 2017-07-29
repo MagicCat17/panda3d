@@ -835,13 +835,16 @@ if (COMPILER=="GCC"):
                 # Needed when linking ffmpeg statically on Linux.
                 LibName("FFMPEG", "-Wl,-Bsymbolic")
 
-        cv_lib = ChooseLib(("opencv_core", "cv"), "OPENCV")
-        if cv_lib == "opencv_core":
-            OPENCV_VER_23 = True
-            SmartPkgEnable("OPENCV", "opencv",   ("opencv_core", "opencv_highgui"), ("opencv2/core/core.hpp"))
+        if PkgSkip("FFMPEG") or GetTarget() == "darwin":
+            cv_lib = ChooseLib(("opencv_core", "cv"), "OPENCV")
+            if cv_lib == "opencv_core":
+                OPENCV_VER_23 = True
+                SmartPkgEnable("OPENCV", "opencv",   ("opencv_core", "opencv_highgui"), ("opencv2/core/core.hpp"))
+            else:
+                SmartPkgEnable("OPENCV", "opencv",   ("cv", "highgui", "cvaux", "ml", "cxcore"),
+                               ("opencv", "opencv/cv.h", "opencv/cxcore.h", "opencv/highgui.h"))
         else:
-            SmartPkgEnable("OPENCV", "opencv",   ("cv", "highgui", "cvaux", "ml", "cxcore"),
-                           ("opencv", "opencv/cv.h", "opencv/cxcore.h", "opencv/highgui.h"))
+            PkgDisable("OPENCV")
 
         rocket_libs = ("RocketCore", "RocketControls")
         if (GetOptimize() <= 3):
@@ -1214,7 +1217,7 @@ def CompileCxx(obj,src,opts):
 
     if (COMPILER=="GCC"):
         if (src.endswith(".c")): cmd = GetCC() +' -fPIC -c -o ' + obj
-        else:                    cmd = GetCXX()+' -std=gnu++0x -ftemplate-depth-70 -fPIC -c -o ' + obj
+        else:                    cmd = GetCXX()+' -std=gnu++11 -ftemplate-depth-70 -fPIC -c -o ' + obj
         for (opt, dir) in INCDIRECTORIES:
             if (opt=="ALWAYS") or (opt in opts): cmd += ' -I' + BracketNameWithQuotes(dir)
         for (opt, dir) in FRAMEWORKDIRECTORIES:
@@ -1512,7 +1515,9 @@ def CompileLib(lib, obj, opts):
             if HasTargetArch():
                 cmd += " /MACHINE:" + GetTargetArch().upper()
             cmd += ' /OUT:' + BracketNameWithQuotes(lib)
-            for x in obj: cmd += ' ' + BracketNameWithQuotes(x)
+            for x in obj:
+                if not x.endswith('.lib'):
+                    cmd += ' ' + BracketNameWithQuotes(x)
             oscmd(cmd)
         else:
             # Choose Intel linker; from Jean-Claude
@@ -1564,6 +1569,21 @@ def CompileLink(dll, obj, opts):
                 else: cmd += " /NOD:MSVCRT.LIB mfcs100.lib MSVCRT.lib"
             cmd += " /FIXED:NO /OPT:REF /STACK:4194304 /INCREMENTAL:NO "
             cmd += ' /OUT:' + BracketNameWithQuotes(dll)
+
+            if not PkgSkip("PYTHON"):
+                # If we're building without Python, don't pick it up implicitly.
+                if "PYTHON" not in opts:
+                    pythonv = SDK["PYTHONVERSION"].replace('.', '')
+                    if optlevel <= 2:
+                        cmd += ' /NOD:{}d.lib'.format(pythonv)
+                    else:
+                        cmd += ' /NOD:{}.lib'.format(pythonv)
+
+                # Yes, we know we are importing "locally defined symbols".
+                for x in obj:
+                    if x.endswith('libp3pystub.lib'):
+                        cmd += ' /ignore:4049,4217'
+                        break
 
             # Set the subsystem.  Specify that we want to target Windows XP.
             subsystem = GetValueOption(opts, "SUBSYSTEM:") or "CONSOLE"
@@ -2688,7 +2708,7 @@ if GetTarget() == 'windows':
 import os
 
 bindir = os.path.join(os.path.dirname(__file__), '..', 'bin')
-if os.path.isfile(os.path.join(bindir, 'libpanda.dll')):
+if os.path.isdir(bindir):
     if not os.environ.get('PATH'):
         os.environ['PATH'] = bindir
     else:
@@ -2777,12 +2797,12 @@ else:
     configprc = ReadFile("makepanda/config.in")
 
 if (GetTarget() == 'windows'):
-    configprc = configprc.replace("$HOME/.panda3d", "$USER_APPDATA/Panda3D-%s" % MAJOR_VERSION)
+    configprc = configprc.replace("$XDG_CACHE_HOME/panda3d", "$USER_APPDATA/Panda3D-%s" % MAJOR_VERSION)
 else:
     configprc = configprc.replace("aux-display pandadx9", "")
 
 if (GetTarget() == 'darwin'):
-    configprc = configprc.replace(".panda3d/cache", "Library/Caches/Panda3D-%s" % MAJOR_VERSION)
+    configprc = configprc.replace("$XDG_CACHE_HOME/panda3d", "Library/Caches/Panda3D-%s" % MAJOR_VERSION)
 
     # OpenAL is not yet working well on OSX for us, so let's do this for now.
     configprc = configprc.replace("p3openal_audio", "p3fmod_audio")
@@ -4866,7 +4886,7 @@ if (PkgSkip("BULLET")==0 and not RUNTIME):
 #
 
 if (PkgSkip("PHYSX")==0):
-  OPTS=['DIR:panda/src/physx', 'BUILDING:PANDAPHYSX', 'PHYSX', 'NOARCH:PPC']
+  OPTS=['DIR:panda/src/physx', 'BUILDING:PANDAPHYSX', 'PHYSX', 'NOARCH:PPC', 'PYTHON']
   TargetAdd('p3physx_composite.obj', opts=OPTS, input='p3physx_composite.cxx')
 
   OPTS=['DIR:panda/src/physx', 'PHYSX', 'NOARCH:PPC', 'PYTHON']
@@ -4886,7 +4906,7 @@ if (PkgSkip("PHYSX")==0):
   TargetAdd('libpandaphysx.dll', input='pandaphysx_pandaphysx.obj')
   TargetAdd('libpandaphysx.dll', input='p3physx_composite.obj')
   TargetAdd('libpandaphysx.dll', input=COMMON_PANDA_LIBS)
-  TargetAdd('libpandaphysx.dll', opts=['WINUSER', 'PHYSX', 'NOARCH:PPC'])
+  TargetAdd('libpandaphysx.dll', opts=['WINUSER', 'PHYSX', 'NOARCH:PPC', 'PYTHON'])
 
   OPTS=['DIR:panda/metalibs/pandaphysx', 'PHYSX', 'NOARCH:PPC', 'PYTHON']
   TargetAdd('physx_module.obj', input='libpandaphysx.in')
