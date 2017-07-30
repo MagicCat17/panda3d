@@ -1027,14 +1027,18 @@ class DirectGuiWidget(DirectGuiBase, NodePath):
             if __dev__:
                 guiObjectCollector.subLevel(1)
                 guiObjectCollector.flushLevel()
-                if hasattr(base, 'guiItems'):
-                    if self.guiId in base.guiItems:
-                        del base.guiItems[self.guiId]
-                    else:
-                        base.notify.warning(
-                            'DirectGuiWidget.destroy(): '
-                            'gui item %s not in base.guiItems' %
-                            self.guiId)
+                try:
+                    if hasattr(base, 'guiItems'):
+                        if self.guiId in base.guiItems:
+                            del base.guiItems[self.guiId]
+                        else:
+                            base.notify.warning(
+                                'DirectGuiWidget.destroy(): '
+                                'gui item %s not in base.guiItems' %
+                                self.guiId)
+                except:
+                    pass
+
             # Destroy children
             for child in self.getChildren():
                 childGui = self.guiDict.get(child.getName())

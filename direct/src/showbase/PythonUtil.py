@@ -24,7 +24,7 @@ __all__ = ['indent',
 'listToIndex2item', 'listToItem2index',
 'formatTimeCompact','deeptype','StdoutCapture','StdoutPassthrough',
 'Averager', 'getRepository', 'formatTimeExact', 'startSuperLog', 'endSuperLog',
-'typeName', 'safeTypeName', 'histogramDict', 'unescapeHtmlString']
+'typeName', 'safeTypeName', 'histogramDict', 'unescapeHtmlString', 'PriorityCallbacks', 'clampScalar']
 
 if __debug__:
     __all__ += ['StackTrace', 'traceFunctionCall', 'traceParentCall', 'printThisCall',
@@ -2692,6 +2692,46 @@ if __debug__ and __name__ == '__main__':
     assert unescapeHtmlString('as+df') == 'as df'
     assert unescapeHtmlString('as%32df') == 'as2df'
     assert unescapeHtmlString('asdf%32') == 'asdf2'
+
+class PriorityCallbacks:
+    """ manage a set of prioritized callbacks, and allow them to be invoked in order of priority """
+    def __init__(self):
+        self._callbacks = []
+
+    def clear(self):
+        while self._callbacks:
+            self._callbacks.pop()
+
+    def add(self, callback, priority=None):
+        if priority is None:
+            priority = 0
+        item = (priority, callback)
+        bisect.insort(self._callbacks, item)
+        return item
+
+    def remove(self, item):
+        self._callbacks.pop(bisect.bisect_left(self._callbacks, item))
+
+    def __call__(self):
+        for priority, callback in self._callbacks:
+            callback()
+
+def clampScalar(value, a, b):
+    # calling this ought to be faster than calling both min and max
+    if a < b:
+        if value < a:
+            return a
+        elif value > b:
+            return b
+        else:
+            return value
+    else:
+        if value < b:
+            return b
+        elif value > a:
+            return a
+        else:
+            return value
 
 builtins.Functor = Functor
 builtins.Stack = Stack
